@@ -26,7 +26,6 @@ namespace UnmanagedExportLibrary3
                 order += Row["date"].ToString();
                 order += ";";
             }
-            
             return order.Substring(0, order.Length - 1);
         }
        
@@ -54,8 +53,9 @@ namespace UnmanagedExportLibrary3
         }
 
         //  get tickets of pending orders
-        [DllExport("getPending", CallingConvention = CallingConvention.StdCall)]
-        public static string getPending()
+        //get all information of pending orders of previous hour. Then cleanup this table.
+        [DllExport("getPendingDetails", CallingConvention = CallingConvention.StdCall)]
+        public static string getPendingDetails()
         {
             Database db = new Database();
             DataTable table = db.query("select ticket,stock_id,portfolio_id,type from pendingDetails");
@@ -65,23 +65,146 @@ namespace UnmanagedExportLibrary3
                 orders += row["ticket"] + ",";
                 orders += row["stock_id"] + ",";
                 orders += row["portfolio_id"] + ",";
-                orders += row["type"] + ",";
+                orders += row["type"] + ";";
             }
+            //db.execute_query("delete from pendingDetails");
             return orders.Substring(0, orders.Length - 1);
         }
 
-        //update the pending order
-        // [DllExport("updatePending", CallingConvention = CallingConvention.StdCall)]
-        //public static string updatePending(string stock_id, int portfolio_id, int ticket, int volume, double price)
-        //{
-        //     //TODO
-        //    Database db = new Database();
-        //     //copy all pendingdetiails to Positions Details
-        //    db.execute_query(string.Format("insert into positionDetails select * from pendingDetails where tickket={0}",ticket));
-        //     //change pending order in stockinportfolio into open 
-               
-        //}
+        //Store currently pending order into
+        [DllExport("storePending", CallingConvention = CallingConvention.StdCall)]
+        public static void storePending(string stock_id, int portfolio_id, int ticket, double volume, double price, string order_date, string rec_date, string rec, string type)
+        {
+            //convert volume back to stock scale
+            volume *= 100;
+            Database db = new Database();
+            //if ticket =-1 aka position is NOT successfully opened then just set stock_ticket=-1 in StockRecommend table
+            if (ticket <0)
+            {
+                db.execute_query(string.Format("update StockRecommend set stock_ticket = {0} where  portfolio_id={1} and stock_id='{2}' and date ='{3}' and type ='{4}'",
+                        ticket,portfolio_id, stock_id, rec_date, type));
+                return;
+            }
+            //else
+            //1. change rec in Stockinportfolio to pending
+            //2. create new record in pendingDetails             
+            //3. change stock recommend status to pending
+            else
+            {
+                //1. change rec in Stockinportfolio to pending
+                db.execute_query(string.Format("update StockInPortfolio set rec = 'PENDING' , stock_ticket={0} where portfolio_id={1} and stock_id='{2}' and type like '%{3}%' and rec like '%OPEN%';", ticket, portfolio_id, stock_id, type));                  
+                //2. create new record in pendingDetails  
+                db.execute_query(string.Format("insert into PendingDetails(portfolio_id,stock_id,type,volume,price,ticket) values ('{0}','{1}','{2}',{3},{4},{5});",
+                    portfolio_id, stock_id, type, volume, price, ticket));
+                //3. change stock recommend status to pending
+                db.execute_query(string.Format("update StockRecommend set stock_ticket='PENDING', rec ='{0}' where  portfolio_id={1} and stock_id like '{2}' and date = '{3}';",
+                    rec, portfolio_id, stock_id, rec_date));
+                return;
+            }
+            
+        }
+        //check if pending orders are open
+        //if pending ordre is open, change it to open( using updateOpen() tweak it to change from Pending to Open)
+         //else, delete the pending
+        [DllExport("updatePending", CallingConvention = CallingConvention.StdCall)]
+        public static string updatePending(string stock_id, int portfolio_id, int ticket, int volume, double price, string order_date, string rec_date, string rec, string type)
+        {
+            //TODO
+            Database db = new Database();
+            //copy all pendingDetiails to Positions Details
+            db.execute_query(string.Format("insert into positionDetails select * from pendingDetails where tickket={0}", ticket));
+            //change pending order in stockinportfolio into open 
+            return "";
+        }
 
+        //update the ticket and the record
+        [DllExport("updateOpen", CallingConvention = CallingConvention.StdCall)]
+        public static void updateOpen(string stock_id, int portfolio_id, int ticket, int volume, double price, string order_date, string rec_date, string rec, string type)
+        {
+            volume *= 100;
+            //set up connection
+            SqlConnection myConnection = new SqlConnection(Database.getCString());
+            string sql = "";
+            try
+            {
+                myConnection.Open();
+            }
+            catch (System.Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+            try
+            {
+                
+                //if ticket =-1 aka position is NOT successfully opened then just set stock_ticket=-1 in StockRecommend table
+                if (ticket < 0)
+                {
+                    sql += string.Format("update StockRecommend set stock_ticket = {0} where  portfolio_id={1} and stock_id='{2}' and date ='{3}' and type ='{4}'",
+                        ticket,portfolio_id, stock_id, rec_date, type);
+                    log(sql);
+                }
+                //else
+                //1. insert order into Stock record
+                //2. Create new record in PositionDetails
+                //2. make new record in stockStockInPortfolio with real price date and volume
+                //if the currency exist then stack up the volume, and update the new price
+
+                // 3. update the stock ticket in Stockrecommended  
+                else
+                {
+                    //1. insert order into stock Record
+                    sql += string.Format("insert into StockRecord(portfolio_id,stock_id,stock_ticket,date,volume,price,status) values({0},'{1}',{2},'{3}',{4},{5},'{6}');",
+                    portfolio_id, stock_id, ticket, order_date, volume, price, type);
+
+                    //2. Create new record in PositionDetails
+                    sql += string.Format("insert into PositionDetails(portfolio_id,stock_id,type,volume,price,ticket) values ('{0}','{1}','{2}',{3},{4},{5});",
+                    portfolio_id, stock_id, type, volume, price, ticket);
+
+                    //3.make new record in stockStockInPortfolio with real price date and volume
+                    //check if the current position  exists in the portfolio
+                    SqlDataReader myreader = null;
+                    //date is excluded because there cannot exist two records of the same type in Stockinportfolio
+                    string query = string.Format("select volume,avgprice from StockInPortfolio where portfolio_id={0} and stock_id='{1}' and type ='{2}' and rec ='';", portfolio_id, stock_id, type);
+                    SqlCommand mycommand = new SqlCommand(query, myConnection);
+                    myreader = mycommand.ExecuteReader();
+
+                    //if exist stack up the volume and update the price
+                    if (myreader.Read())
+                    {
+                        int old_volume = int.Parse(myreader["volume"].ToString());
+                        double old_price = Double.Parse(myreader["avgprice"].ToString());
+                        //calculate new price and volume
+                        int new_volume = old_volume + volume;
+                        double new_price = (price * volume + old_price * old_volume) / new_volume;
+                        sql += string.Format("update StockInPortfolio set volume={0}, avgprice={1} where portfolio_id={2} and stock_id='{3}' and type like '%{4}%' and rec ='';", new_volume, new_price, portfolio_id, stock_id, type);
+                    }
+
+                    //else, create new record
+                    else
+                    {
+                        sql += string.Format("insert into StockInPortfolio(stock_id,portfolio_id,type,volume,date,avgPrice,rec)  values('{0}',{1},'{2}',{3},'{4}',{5},'');",
+                            stock_id, portfolio_id, type, volume, order_date, price);
+                    }
+                    myreader.Close();
+                    //4. update the stock ticket in Stockrecommended
+                    sql += string.Format("update StockRecommend set stock_ticket+='{0}'+',' , rec ='{1}' where  portfolio_id={2} and stock_id like '{3}' and date = '{4}';",
+                    ticket, rec, portfolio_id, stock_id, rec_date);
+                }
+                log(sql);
+                SqlCommand myCommand = new SqlCommand(sql, myConnection);
+                myCommand.ExecuteNonQuery();
+                myConnection.Close();
+
+            }
+            catch (System.Exception e)
+            {
+                log(e.ToString() + "\n\n"+sql);
+            }
+
+
+        }
+
+        
         //return tickets of opening Position to check if it were autoclosed or not.
         [DllExport("getAutoClose", CallingConvention = CallingConvention.StdCall)]
         public static string getAutoClose()
@@ -129,125 +252,6 @@ namespace UnmanagedExportLibrary3
              db.execute_query(sql);
         }
 
-        //update pending order
-        [DllExport("updatePending", CallingConvention = CallingConvention.StdCall)]
-        public static void updatePending(string stock_id, int portfolio_id, int ticket, int volume, double price, string order_date, string rec_date, string rec, string type)
-        {
-            Database db = new Database();
-            log("called");
-            //if ticket =-1 aka position is NOT successfully opened then just set stock_ticket=-1 in StockRecommend table
-            if (ticket == -1)
-            {
-                db.execute_query(string.Format("update StockRecommend set stock_ticket = -1 where  portfolio_id={0} and stock_id='{1}' and date ='{2}' and type ='{3}'",
-                    portfolio_id, stock_id, rec_date, type));
-                return;
-            }
-            //else
-            //1. change rec in Stockinportfolio to pending
-            //2. create new record in pendingDetails             
-            //3. change stock recommend status to pending
-            else
-            {
-                //1. change rec in Stockinportfolio to pending
-                db.execute_query(string.Format("update StockInPortfolio set rec = 'PENDING' where portfolio_id={0} and stock_id='{1}' and type like '%{2}%' and rec like '%OPEN%';", portfolio_id, stock_id, type));                  
-                //2. create new record in pendingDetails  
-                db.execute_query(string.Format("insert into PendingDetails(portfolio_id,stock_id,type,volume,price,ticket) values ('{0}','{1}','{2}',{3},{4},{5});",
-                    portfolio_id, stock_id, type, volume, price, ticket));
-                //3. change stock recommend status to pending
-                db.execute_query(string.Format("update StockRecommend set stock_ticket='PENDING', rec ='{0}' where  portfolio_id={1} and stock_id like '{2}' and date = '{3}';",
-                    rec, portfolio_id, stock_id, rec_date));
-                return;
-            }
-            
-        }
-        //update the ticket and the record
-        [DllExport("updateOpen", CallingConvention = CallingConvention.StdCall)]
-        public static void updateOpen(string stock_id, int portfolio_id, int ticket, int volume, double price, string order_date, string rec_date, string rec, string type)
-        {
-
-            //set up connection
-            SqlConnection myConnection = new SqlConnection(getCString());
-            string sql = "";
-            try
-            {
-                myConnection.Open();
-            }
-            catch (System.Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-            try
-            {
-                
-                //if ticket =-1 aka position is NOT successfully opened then just set stock_ticket=-1 in StockRecommend table
-                if (ticket < 0)
-                {
-                    sql += string.Format("update StockRecommend set stock_ticket = -1 where  portfolio_id={0} and stock_id='{1}' and date ='{2}' and type ='{3}'",
-                        portfolio_id, stock_id, rec_date, type);
-
-                }
-                //else
-                //1. insert order into Stock record
-                //2. Create new record in PositionDetails
-                //2. make new record in stockStockInPortfolio with real price date and volume
-                //if the currency exist then stack up the volume, and update the new price
-
-                // 3. update the stock ticket in Stockrecommended  
-                else
-                {
-                    //1. insert order into stock Record
-                    sql += string.Format("insert into StockRecord(portfolio_id,stock_id,stock_ticket,date,volume,price,status) values({0},'{1}',{2},'{3}',{4},{5},'{6}');",
-                    portfolio_id, stock_id, ticket, order_date, volume, price, type);
-
-                    //2. Create new record in PositionDetails
-                    sql += string.Format("insert into PositionDetails(portfolio_id,stock_id,type,volume,price,ticket) values ('{0}','{1}','{2}',{3},{4},{5});",
-                    portfolio_id, stock_id, type, volume, price, ticket);
-
-                    //3.make new record in stockStockInPortfolio with real price date and volume
-                    //check if the current position  exists in the portfolio
-                    SqlDataReader myreader = null;
-                    //date is excluded because there cannot exist two records of the same type in Stockinportfolio
-                    string query = string.Format("select volume,avgprice from StockInPortfolio where portfolio_id={0} and stock_id='{1}' and type ='{2}' and rec ='';", portfolio_id, stock_id, type);
-                    SqlCommand mycommand = new SqlCommand(query, myConnection);
-                    myreader = mycommand.ExecuteReader();
-
-                    //if exist stack up the volume and update the price
-                    if (myreader.Read())
-                    {
-                        int old_volume = int.Parse(myreader["volume"].ToString());
-                        double old_price = Double.Parse(myreader["avgprice"].ToString());
-                        //calculate new price and volume
-                        int new_volume = old_volume + volume;
-                        double new_price = (price * volume + old_price * old_volume) / new_volume;
-                        sql += string.Format("update StockInPortfolio set volume={0}, avgprice={1} where portfolio_id={2} and stock_id='{3}' and type like '%{4}%' and rec ='';", new_volume, new_price, portfolio_id, stock_id, type);
-                    }
-
-                    //else, create new record
-                    else
-                    {
-                        sql += string.Format("insert into StockInPortfolio(stock_id,portfolio_id,type,volume,date,avgPrice,rec)  values('{0}',{1},'{2}',{3},'{4}',{5},'');",
-                            stock_id, portfolio_id, type, volume, order_date, price);
-                    }
-                    myreader.Close();
-                    //4. update the stock ticket in Stockrecommended
-                    sql += string.Format("update StockRecommend set stock_ticket={0}, rec ='{1}' where  portfolio_id={2} and stock_id like '{3}' and date = '{4}';",
-                    ticket, rec, portfolio_id, stock_id, rec_date);
-                }
-                SqlCommand myCommand = new SqlCommand(sql, myConnection);
-                myCommand.ExecuteNonQuery();
-                myConnection.Close();
-
-            }
-            catch (System.Exception e)
-            {
-                log(e.ToString() + "\n\n"+sql);
-            }
-
-
-        }
-
-        
-        [DllExport("updateClose", CallingConvention = CallingConvention.StdCall)]
         public static void updateClose(int ticket, string date, double volume, double price)
         {
             
@@ -303,11 +307,11 @@ namespace UnmanagedExportLibrary3
            db.execute_query(sql);
         }
 
-        [DllExport("updateprice", CallingConvention = CallingConvention.StdCall)]
+        [DllExport("updatePrice", CallingConvention = CallingConvention.StdCall)]
         public static void updatePrice(string symbol, string date_time, double open, double close, double high, double low, int volume)
         {
 
-            SqlConnection myConnection = new SqlConnection(getCString());
+            SqlConnection myConnection = new SqlConnection(Database.getCString());
             myConnection.Open();            
             //SqlCommand myCommand = new SqlCommand("insert into Price values ('aba',GetDate(),4,3)", myConnection);
             string sql = string.Format("insert into Stock(stock_id,date,openPrice, closedPrice,maxPrice,minPrice,matchedVolume ) values('{0}','{1}',{2},{3},{4},{5},{6});", symbol, date_time,
@@ -337,22 +341,6 @@ namespace UnmanagedExportLibrary3
             System.IO.File.AppendAllText(@"C:\WriteLines.txt", input);
         }
 
-        public static string getCString()
-        {
-            return "user id=berichadmin;" +
-                                    "password=berich;server=apps.berich.vn;" +
-                                    "trusted_connection=no;" +
-                                    "database=forex; " +
-                                    "connection timeout=90;" +
-         "persist security info=true;" +
-         "user instance=false;";
-            //       myconnection = new SqlConnection("user id=sa;" +
-            //                           "password=999999;server=localhost\\SQL;" +
-            //                           "trusted_connection=no;" +
-            //                           "database=forex; " +
-            //                           "connection timeout=90;" +
-            //"persist security info=true;" +
-            //"user instance=false;");
-        }
+
     }   
 }
