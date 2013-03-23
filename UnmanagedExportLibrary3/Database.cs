@@ -8,53 +8,66 @@ namespace UnmanagedExportLibrary3
 {
     class Database
     {
-        //private static string connectionString = "user id=sa;" +
-        //                               "password=999999;server=localhost\\SQL;" +
+        //private static string connectionString = "user id=berichadmin;" +
+        //                               "password=berich;server=testing.berich.vn" +
         //                               "trusted_connection=no;" +
-        //                               "database=forex; " +
+        //                               "database=Forex; " +
         //                               "connection timeout=90;" +
         //    "persist security info=true;" +
         //    "user instance=false;";
-        private static string connectionString = "user id=berichadmin;password=berich;server=apps.berich.vn;trusted_connection=no;database=forex; connection timeout=90;persist security info=true;user instance=false;";
+        private const string dbName = "acc11056192";
+        private const string connectionString = "user id=berichadmin;password=berich;server=localhost;trusted_connection=no;database=" + dbName + "; connection timeout=90;persist security info=true;user instance=false;";
+        //private static string connectionString = "user id=berichadmin;password=berich;server=testing.berich.vn;trusted_connection=no;database=forex; connection timeout=90;persist security info=true;user instance=false;";
         private SqlConnection myconnection;
         //private SqlConnection myconnection = new SqlConnection("user id=sa;password=;999999;server=localhost\\SQL;trusted_connection=no;database=forex; connection timeout=90;persist security info=true;user instance=false;");
-        public Database()
+        public Database(string conn = connectionString)
         {
-            myconnection = new SqlConnection(connectionString);
-            
+            myconnection = new SqlConnection(conn);
         }
         public static string getCString()
         {
             return connectionString;
         }
-        public void executeNonQuery(string sql)
+        public void executeNonQuery(string sql, bool toLog = true)
         {
-            this.myconnection.Open();
-            this.log(sql + "\n");
+            if (toLog == true)
+                log_query(sql);
             try
             {
+                this.myconnection.Open();
                 SqlCommand mycommand = new SqlCommand(sql, this.myconnection);
-               mycommand.ExecuteNonQuery();
-               this.myconnection.Close();
+                mycommand.ExecuteNonQuery();
+                this.myconnection.Close();
             }
             catch (Exception e)
             {
-                this.log(e.ToString() + "\n" + sql + "\n");
-                
+                string errorMessage = e.ToString();
+                if (!errorMessage.Contains(@"Violation of PRIMARY KEY constraint 'PK__stock__35FB8A7D7FB5F314'"))
+                    log_error(e.ToString() + "\n" + sql + "\n");
+
             }
+            this.myconnection.Close();
         }
 
-        public void log(string input)
+        public static void log_query(string input)
         {
-            System.IO.File.AppendAllText(@"C:\error.txt", input);
+            System.IO.File.AppendAllText(@"C:\query.txt", input + "\n\n");
+
+        }
+
+        public static void log_error(string input)
+        {
+            String destination = string.Format(@"C:\error_logs\{0}\error.txt", dbName);
+            System.IO.File.AppendAllText(destination, input + "\n\n");
         }
 
         public DataTable query(string sql)
         {
-            SqlCommand mycommand = new SqlCommand(sql, this.myconnection);
-            SqlDataAdapter da = new SqlDataAdapter(mycommand);
+            //  log(sql);
             try
             {
+                SqlCommand mycommand = new SqlCommand(sql, this.myconnection);
+                SqlDataAdapter da = new SqlDataAdapter(mycommand);
                 da.SelectCommand = mycommand;
                 DataTable dtGet = new DataTable();
                 da.Fill(dtGet);
