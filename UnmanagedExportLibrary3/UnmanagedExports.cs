@@ -144,24 +144,18 @@ namespace UnmanagedExportLibrary3
         public static void updateOpenLocal(string stock_id, int portfolio_id, int ticket, double volume, double price, string order_date, string rec_date, string rec, string type, string error)
         {
             //set up connection
-            SqlConnection myConnection = new SqlConnection(Database.getCString());
+            Database db = new Database();
+            SqlConnection myConnection = new SqlConnection(Database.getCString()); //legacy code
             string sql = "";
-            try
-            {
-                myConnection.Open();
-            }
-            catch (System.Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
             try
             {
 
                 //if ticket =-1 aka position is NOT successfully opened then just set stock_ticket=-1 in StockRecommend table
                 if (ticket < 0)
                 {
-                    sql += string.Format("update StockRecommend set stock_ticket ='{0}' where  portfolio_id={1} and stock_id='{2}' and date ='{3}' and type ='{4}'",
+                    sql = string.Format("update StockRecommend set stock_ticket ='{0}' where  portfolio_id={1} and stock_id='{2}' and date ='{3}' and type ='{4}'",
                       error, portfolio_id, stock_id, rec, type);
+                    db.executeNonQuery(sql);
                 }
                 //else
                 //1. insert order into Stock record
@@ -173,15 +167,17 @@ namespace UnmanagedExportLibrary3
                 else
                 {
                     //1. insert order into stockRecord
-                    sql += string.Format("insert into StockRecord(portfolio_id,stock_id,stock_ticket,date,volume,price,status) values({0},'{1}',{2},'{3}',{4},{5},'{6}');",
+                    sql = string.Format("insert into StockRecord(portfolio_id,stock_id,stock_ticket,date,volume,price,status) values({0},'{1}',{2},'{3}',{4},{5},'{6}');",
                     portfolio_id, stock_id, ticket, order_date, volume, price, type);
+                    db.executeNonQuery(sql);
 
                     //2. Create new record in PositionDetails
-                    sql += string.Format("insert into PositionDetails(portfolio_id,stock_id,type,volume,price,ticket) values ('{0}','{1}','{2}',{3},{4},{5});",
+                    sql = string.Format("insert into PositionDetails(portfolio_id,stock_id,type,volume,price,ticket) values ('{0}','{1}','{2}',{3},{4},{5});",
                     portfolio_id, stock_id, type, volume, price, ticket);
+                    db.executeNonQuery(sql);
 
-                    //3.make new record in stockStockInPortfolio with real price date and volume
-                    //check if the current position  exists in the portfolio
+                    //3.create a new record in stockStockInPortfolio with real price date and volume
+                    //check if the current position  exists in the portfolio                   
                     SqlDataReader myreader = null;
                     //date is excluded because there cannot exist two records of the same type in Stockinportfolio
                     string query = string.Format("select volume,avgprice from StockInPortfolio where portfolio_id={0} and stock_id='{1}' and type ='{2}' and rec ='';", portfolio_id, stock_id, type);
@@ -196,24 +192,23 @@ namespace UnmanagedExportLibrary3
                         //calculate new price and volume
                         double new_volume = old_volume + volume;
                         double new_price = (price * volume + old_price * old_volume) / new_volume;
-                        sql += string.Format("update StockInPortfolio set volume={0}, avgprice={1} where portfolio_id={2} and stock_id='{3}' and type like '%{4}%' and rec ='';", new_volume, new_price, portfolio_id, stock_id, type);
+                        sql = string.Format("update StockInPortfolio set volume={0}, avgprice={1} where portfolio_id={2} and stock_id='{3}' and type like '%{4}%' and rec ='';", new_volume, new_price, portfolio_id, stock_id, type);
+                        db.executeNonQuery(sql);
                     }
 
                     //else, create new record
                     else
                     {
-                        sql += string.Format("insert into StockInPortfolio(stock_id,portfolio_id,type,volume,date,avgPrice,rec)  values('{0}',{1},'{2}',{3},'{4}',{5},'');",
+                        sql = string.Format("insert into StockInPortfolio(stock_id,portfolio_id,type,volume,date,avgPrice,rec)  values('{0}',{1},'{2}',{3},'{4}',{5},'');",
                             stock_id, portfolio_id, type, volume, order_date, price);
+                        db.executeNonQuery(sql);
                     }
                     myreader.Close();
                     //4. update the stock ticket in Stockrecommended
-                    sql += string.Format("update StockRecommend set stock_ticket='{0} '+stock_ticket , rec ='{1}' where  portfolio_id={2} and stock_id like '{3}' and date like '{4}';",
+                    sql = string.Format("update StockRecommend set stock_ticket='{0} '+stock_ticket , rec ='{1}' where  portfolio_id={2} and stock_id like '{3}' and date like '{4}';",
                     ticket, rec, portfolio_id, stock_id, rec_date);
-                }
-
-                SqlCommand myCommand = new SqlCommand(sql, myConnection);
-                myCommand.ExecuteNonQuery();
-                Database db = new Database();
+                    db.executeNonQuery(sql);
+                }                
                 db.executeNonQuery(string.Format("delete from Stockinportfolio where portfolio_id={0} and stock_id='{1}' and type like '%{2}%' and rec like '%OPEN%'", portfolio_id, stock_id, type));
                 myConnection.Close();
             }

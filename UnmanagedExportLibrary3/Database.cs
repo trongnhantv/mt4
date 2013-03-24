@@ -37,30 +37,17 @@ namespace UnmanagedExportLibrary3
                 this.myconnection.Open();
                 SqlCommand mycommand = new SqlCommand(sql, this.myconnection);
                 mycommand.ExecuteNonQuery();
-                this.myconnection.Close();
             }
             catch (Exception e)
             {
                 string errorMessage = e.ToString();
                 if (!errorMessage.Contains(@"Violation of PRIMARY KEY constraint 'PK__stock__35FB8A7D7FB5F314'"))
-                    log_error(e.ToString() + "\n" + sql + "\n");
-
+                    log_sql_error(e, sql);
             }
             this.myconnection.Close();
         }
 
-        public static void log_query(string input)
-        {
-            System.IO.File.AppendAllText(@"C:\query.txt", input + "\n\n");
-
-        }
-
-        public static void log_error(string input)
-        {
-            String destination = string.Format(@"C:\error_logs\{0}\error.txt", dbName);
-            System.IO.File.AppendAllText(destination, input + "\n\n");
-        }
-
+   
         public DataTable query(string sql)
         {
             //  log(sql);
@@ -75,10 +62,23 @@ namespace UnmanagedExportLibrary3
             }
             catch (Exception e)
             {
-                this.log(e.ToString() + "\n" + sql + "\n");
+               log_sql_error(e,sql);
             }
             return null;
         }
+
+        public static void log_query(string input)
+        {
+            System.IO.File.AppendAllText(@"C:\query.txt", input + "\n\n");
+
+        }
+
+        public static void log_sql_error(Exception e,string ql)
+        {
+            String destination = string.Format(@"C:\error_logs\{0}\error.txt", dbName);
+            System.IO.File.AppendAllText(destination, e.ToString() + "\n\n");
+        }
+
     }
 }
 
