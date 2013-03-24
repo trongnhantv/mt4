@@ -15,7 +15,7 @@ namespace UnmanagedExportLibrary3
         //                               "connection timeout=90;" +
         //    "persist security info=true;" +
         //    "user instance=false;";
-        private const string dbName = "acc11056192";
+        private const string dbName = "AlpariH4";
         private const string connectionString = "user id=berichadmin;password=berich;server=localhost;trusted_connection=no;database=" + dbName + "; connection timeout=90;persist security info=true;user instance=false;";
         //private static string connectionString = "user id=berichadmin;password=berich;server=testing.berich.vn;trusted_connection=no;database=forex; connection timeout=90;persist security info=true;user instance=false;";
         private SqlConnection myconnection;
@@ -28,7 +28,7 @@ namespace UnmanagedExportLibrary3
         {
             return connectionString;
         }
-        public void executeNonQuery(string sql, bool toLog = true)
+        public void executeNonQuery(string sql, bool toLog = false)
         {
             if (toLog == true)
                 log_query(sql);
@@ -69,14 +69,15 @@ namespace UnmanagedExportLibrary3
 
         public static void log_query(string input)
         {
-            System.IO.File.AppendAllText(@"C:\query.txt", input + "\n\n");
+            System.IO.File.AppendAllText(@"C:\metatrader\query.txt", input + "\n\n");
 
         }
 
-        public static void log_sql_error(Exception e,string ql)
+        public static void log_sql_error(Exception e,string sql)
         {
-            String destination = string.Format(@"C:\error_logs\{0}\error.txt", dbName);
-            System.IO.File.AppendAllText(destination, e.ToString() + "\n\n");
+            String destination = string.Format(@"C:\metatrader\error.txt");
+            string error = String.Format("----------------\n{0}\n{1}\nQuery:{2}\n", DateTime.Now.ToString(), e.ToString(),sql);
+            System.IO.File.AppendAllText(destination, error);
         }
 
     }
