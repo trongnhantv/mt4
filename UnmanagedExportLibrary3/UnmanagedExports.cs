@@ -9,7 +9,7 @@ namespace UnmanagedExportLibrary3
 {
     internal static class UnmanagedExports
     {
-        private static int portfolio_id = 945733379;
+        private static int account_id = 91429567;
         [DllExport("getOpen", CallingConvention = CallingConvention.StdCall)]
         public static string getOpen()
         {
@@ -17,7 +17,7 @@ namespace UnmanagedExportLibrary3
             try
             {
                 Database db = new Database();
-                sql = "select stock_id,portfolio_id,type,volume,avgPrice,rec,date from stockinportfolio where rec like 'OPEN%';";
+                sql = "select stock_id,portfolio_id,type,volume,avgPrice,rec,date from stockinportfolio where rec like 'OPEN%' and portfolio_id=" + account_id;
                 DataTable dt = db.query(sql);
                 string order = "";
                 foreach (DataRow Row in dt.Rows)
@@ -50,7 +50,7 @@ namespace UnmanagedExportLibrary3
             try
             {
                 Database db = new Database();
-                sql = string.Format("select ticket,P.stock_id,S.portfolio_id,S.type from StockInPortfolio as S join PositionDetails as P on S.stock_id = P.stock_id and S.portfolio_id=P.portfolio_id and S.type = P.type where S.rec like '%CLOSE%'");
+                sql = string.Format("select ticket,P.stock_id,S.portfolio_id,S.type from StockInPortfolio as S join PositionDetails as P on S.stock_id = P.stock_id and S.portfolio_id=P.portfolio_id and S.type = P.type where S.rec like '%CLOSE%' and S.portfolio_id="+account_id);
                 DataTable dt = db.query(sql);
                 //get string of closed positions
                 string order = "";
@@ -77,8 +77,8 @@ namespace UnmanagedExportLibrary3
             {
 
                 Database db = new Database();
-                db.executeNonQuery("delete from pendingDetails");
-                db.executeNonQuery("delete from Stockinportfolio where rec like '%PENDING%';");
+                db.executeNonQuery("delete from pendingDetails where portfolio_id=" + account_id);
+                db.executeNonQuery("delete from Stockinportfolio where rec like '%PENDING%' and portfolio_id=" + account_id);
             }
             catch (Exception e)
             {
@@ -90,10 +90,11 @@ namespace UnmanagedExportLibrary3
         [DllExport("getPendingDetails", CallingConvention = CallingConvention.StdCall)]
         public static string getPendingDetails()
         {
+             Database db = new Database();
             try
             {
-                Database db = new Database();
-                DataTable table = db.query("select ticket,stock_id,portfolio_id,type from pendingDetails");
+               
+                DataTable table = db.query("select ticket,stock_id,portfolio_id,type from pendingDetails where  portfolio_id=" + account_id);
                 string orders = "";
                 foreach (DataRow row in table.Rows)
                 {
@@ -102,11 +103,12 @@ namespace UnmanagedExportLibrary3
                 if (orders.Length == 0)
                     return "";
                 else
-                    //db.execute_query("delete from pendingDetails");
+                   
                     return orders.Substring(0, orders.Length - 1);
             }
             catch (Exception e)
             {
+                Database.log_sql_error(e);
                 return "";
             }
         }
@@ -121,14 +123,15 @@ namespace UnmanagedExportLibrary3
             {
                 Database db = new Database();
                 //extract all information from the ticket and pass to updateOpenLocal
-                DataTable dt = db.query(string.Format("select stock_id,portfolio_id,volume,date,type from Stockinportfolio where stock_ticket ={0}", ticket));
+                //we can assume that
+                DataTable dt = db.query(string.Format("select stock_id,portfolio_id,volume,date,type from Stockinportfolio where stock_ticket ={0} and portfolio_id={1}", ticket,account_id));
                 string stock_id = dt.Rows[0]["stock_id"].ToString();
                 int portfolio_id = Int32.Parse(dt.Rows[0]["portfolio_id"].ToString());
                 double volume = Int32.Parse(dt.Rows[0]["volume"].ToString());
                 string rec_date = dt.Rows[0]["date"].ToString();
                 string type = dt.Rows[0]["type"].ToString();
                 //change status from PENDING to '' by setting rec to OPEN and then call updateOpenLocal
-                db.executeNonQuery("update Stockinportfolio set rec ='OPEN' where stock_ticket=" + ticket);
+                db.executeNonQuery(string.Format("update Stockinportfolio set rec ='OPEN', stock_ticket=null where stock_ticket ={0} and portfolio_id={1}", ticket, account_id));
                 updateOpenLocal(stock_id, portfolio_id, ticket, volume, price, order_date, rec_date, "OPEN", type, "");
             }
             catch (System.Exception ex)
@@ -217,7 +220,7 @@ namespace UnmanagedExportLibrary3
                     }
                     myreader.Close();
                     //4. update the stock ticket in Stockrecommended
-                    sql = string.Format("update StockRecommend set stock_ticket='{0} '+stock_ticket , rec ='{1}' where  portfolio_id={2} and stock_id like '{3}' and date = Convert(datetime,'{4}',103) ;",
+                    sql = string.Format("update StockRecommend set stock_ticket='{0}, '+stock_ticket , rec ='{1}' where  portfolio_id={2} and stock_id like '{3}' and date = Convert(datetime,'{4}',103) ;",
                     ticket, rec, portfolio_id, stock_id, rec_date);
                     db.executeNonQuery(sql);
                 }                
@@ -307,7 +310,7 @@ namespace UnmanagedExportLibrary3
                     }
                     myreader.Close();
                     //4. update the stock ticket in Stockrecommended
-                    sql = string.Format("update StockRecommend set stock_ticket='{0} '+stock_ticket , rec ='{1}' where  portfolio_id={2} and stock_id like '{3}' and date = Convert(datetime,'{4}',103) ;",
+                    sql = string.Format("update StockRecommend set stock_ticket='{0}, '+stock_ticket, rec ='{1}' where  portfolio_id={2} and stock_id like '{3}' and date = Convert(datetime,'{4}',103) ;",
                     ticket, rec, portfolio_id, stock_id, rec_date);
                     db.executeNonQuery(sql);
                 }
@@ -374,7 +377,7 @@ namespace UnmanagedExportLibrary3
 
                 //get all opening positions in Stockinportfolio
                 Database db = new Database();
-                DataTable table = db.query("select stock_id,portfolio_id,type from StockInPortfolio where rec = ''");
+                DataTable table = db.query("select stock_id,portfolio_id,type from StockInPortfolio where rec = '' and portfolio_id=" + account_id);
                 if (table.Rows.Count == 0) return "";
 
                 //query the ticket of individual order in each positions             
@@ -417,7 +420,7 @@ namespace UnmanagedExportLibrary3
             try
             {
                 Database db = new Database();
-                string sql = "delete from StockInPortfolio where (rec ='' or rec like'%CLOSE%') and (select COUNT(P.ticket) from PositionDetails as P where StockInPortfolio.stock_id=P.stock_id and StockInPortfolio.portfolio_id=p.portfolio_id and StockInPortfolio.type=p.type) = 0";
+                string sql = String.Format("delete from StockInPortfolio where portfolio_id={0} and (rec ='' or rec like'%CLOSE%') and (select COUNT(P.ticket) from PositionDetails as P where StockInPortfolio.stock_id=P.stock_id and StockInPortfolio.portfolio_id=p.portfolio_id and StockInPortfolio.type=p.type) = 0",account_id);
                 db.executeNonQuery(sql);
             }
             catch (Exception e)
@@ -436,32 +439,33 @@ namespace UnmanagedExportLibrary3
             try
             {
                 //extract information from PositionDetails
-                temp = db.query(String.Format("select portfolio_id,stock_id,type from PositionDetails where ticket ={0}", ticket));
+                temp = db.query(String.Format("select portfolio_id,stock_id,type from PositionDetails where ticket ={0} and portfolio_id={1}", ticket,account_id));
                 temp.Rows[0]["portfolio_id"].ToString();
                 string portfolio_id = temp.Rows[0]["portfolio_id"].ToString();
                 string stock_id = temp.Rows[0]["stock_id"].ToString();
                 string status = temp.Rows[0]["type"].ToString();
                 //delete the record in PositionsDetails
-                string delete = string.Format("delete from PositionDetails where ticket={0};", ticket);
-                db.executeNonQuery(delete);
+                sql = string.Format("delete from PositionDetails where ticket={0} and portfolio_id={1}", ticket, account_id);
+                db.executeNonQuery(sql);
                 //update volume and price and volume in Stockinportfolio to reflect the change                      
 
-                //if the last record is reach, no update is needed because the record in Stockinportfolio will be deleted eventually
-                string nvolume = db.query("select SUM(volume) as volume from PositionDetails").Rows[0]["volume"].ToString();
+                //if the last record is reached, no update is needed because the record in Stockinportfolio will be deleted eventually
+                string nvolume = db.query("select SUM(volume) as volume from PositionDetails where portfolio_id="+account_id).Rows[0]["volume"].ToString();
                 if (nvolume.Length > 0)
                 {
                     int new_volume = Int32.Parse(nvolume);
-                    double new_price = Double.Parse(db.query("select SUM(volume*price)/SUM(volume) as avgPrice from PositionDetails").Rows[0]["avgPrice"].ToString());
+                    double new_price = Double.Parse(db.query("select SUM(volume*price)/SUM(volume) as avgPrice from PositionDetails  where portfolio_id=" + account_id).Rows[0]["avgPrice"].ToString());
 
 
                     //update new volume and price
-                    sql += string.Format("update Stockinportfolio set volume={3} , avgPrice = {4} where portfolio_id = {0} AND stock_id = '{1}' AND type = '{2}' and rec ='' ;", portfolio_id, stock_id
+                    sql = string.Format("update Stockinportfolio set volume={3} , avgPrice = {4} where portfolio_id = {0} AND stock_id = '{1}' AND type = '{2}' and rec ='' ;", portfolio_id, stock_id
                             , status, new_volume, new_price);
+                    db.executeNonQuery(sql);
 
                 }
 
                 //insert in StockRecord                        
-                sql += String.Format("insert into stockrecord(portfolio_id,stock_id,stock_ticket,date,volume,price,status) values({0},'{1}',{2},'{3}',{4},{5},'{6}');",
+                sql = String.Format("insert into stockrecord(portfolio_id,stock_id,stock_ticket,date,volume,price,status) values({0},'{1}',{2},'{3}',{4},{5},'{6}');",
                        portfolio_id, stock_id, ticket, date, -volume, price, status);
                 //log(sql.Replace(";","\n") + "\n");
                 db.executeNonQuery(sql);
@@ -475,12 +479,12 @@ namespace UnmanagedExportLibrary3
         }
 
         [DllExport("updateCash", CallingConvention = CallingConvention.StdCall)]
-        public static void updateCash(int portfolio_id, double cash, double capital)
+        public static void updateCash( double cash, double capital)
         {
             try
             {
                 Database db = new Database();
-                string sql = string.Format("update Portfolio set cash={0},capital={1} where portfolio_id={2};", cash, capital, portfolio_id);
+                string sql = string.Format("update Portfolio set cash={0},capital={1} where portfolio_id={2};", cash, capital, account_id);
                 db.executeNonQuery(sql);
             }
             catch (Exception e)

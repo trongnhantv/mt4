@@ -28,7 +28,7 @@ namespace UnmanagedExportLibrary3
         {
             return connectionString;
         }
-        public void executeNonQuery(string sql, bool toLog = false)
+        public void executeNonQuery(string sql, bool toLog = true   )
         {
             if (toLog == true)
                 log_query(sql);
@@ -50,7 +50,7 @@ namespace UnmanagedExportLibrary3
    
         public DataTable query(string sql)
         {
-            //  log(sql);
+            log_query(sql);
             try
             {
                 SqlCommand mycommand = new SqlCommand(sql, this.myconnection);
@@ -69,11 +69,12 @@ namespace UnmanagedExportLibrary3
 
         public static void log_query(string input)
         {
-            System.IO.File.AppendAllText(@"C:\metatrader\query.txt", input + "\n\n");
+            String error = String.Format("----------------\n{0}\n {1} \n", DateTime.Now.ToString(),input);
+            System.IO.File.AppendAllText(@"C:\metatrader\query.txt", error);
 
         }
 
-        public static void log_sql_error(Exception e,string sql)
+        public static void log_sql_error(Exception e,string sql="")
         {
             String destination = string.Format(@"C:\metatrader\error.txt");
             string error = String.Format("----------------\n{0}\n{1}\nQuery:{2}\n", DateTime.Now.ToString(), e.ToString(),sql);
